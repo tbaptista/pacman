@@ -383,7 +383,7 @@ class PacmanDisplay(pyafai.Display):
         super(PacmanDisplay, self).__init__(*args, **kwargs)
         self._game_over_label = pyglet.text.Label('Game Over',
                         font_name='Arial',
-                        font_size=80,
+                        font_size=60,
                         x=self.width//2, y=self.height//2,
                         anchor_x='center', anchor_y='center')
 
