@@ -1,5 +1,5 @@
 Pacman game clone using the pyafai framework
-=============================================
+============================================
 
 
 
@@ -18,7 +18,7 @@ Authors
 
 
 Acknowledgments
--------------
+---------------
 Inspiration and reference for the creation of this Pac-Man clone came from:
 
 - Pac-Man a tribute project by Shaun Williams (http://pacman.shaunew.com)

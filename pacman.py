@@ -14,6 +14,7 @@ from pyafai import shapes
 import pyglet
 from pyglet.window import key
 from pyglet.window import mouse
+import random
 
 
 class ColorConfig(object):
@@ -26,6 +27,12 @@ class ColorConfig(object):
     GHOST3 = ('c3B', (0, 100, 220))
     GHOST4 = ('c3B', (180, 180, 20))
     GHOSTS = [GHOST1, GHOST2, GHOST3, GHOST4]
+    GHOST_SCARED = ('c3B', (0, 0, 200))
+    GHOST_SCARED_FLASH = ('c3B', (200, 200, 200))
+
+    @staticmethod
+    def random_ghost_color():
+        return random.choice(ColorConfig.GHOSTS)
 
 
 class AgentBody(pyafai.Object):
@@ -34,10 +41,12 @@ class AgentBody(pyafai.Object):
                     (1, 0): 0,
                     (-1, 0): 180}
 
+    VELOCITY = 5.0
+
     def __init__(self, x, y):
         super(AgentBody, self).__init__(x, y)
 
-        self.velocity = 5.0
+        self.velocity = AgentBody.VELOCITY
         self._direction = (0, 0)
         self._velx = 0
         self._vely = 0
@@ -109,18 +118,33 @@ class PacmanBody(AgentBody):
         if direction != (0, 0):
             self.angle = self.dir_to_angle[direction]
 
+
 class GhostBody(AgentBody):
     def __init__(self, x, y, color=ColorConfig.GHOST1):
         super(GhostBody, self).__init__(x, y)
+        self.velocity = AgentBody.VELOCITY * 0.95
+        self._color = color
+        self._scared = False
 
-        shape = shapes.Rect(20, 30, color=color)
+        shape = shapes.Rect(30, 30, color=color)
         self.add_shape(shape)
+
+    @property
+    def scared(self):
+        return self._scared
+
+    @scared.setter
+    def scared(self, value):
+        if value != self._scared:
+            self._scared = value
+            if value:
+                self._shapes[0].color = ColorConfig.GHOST_SCARED
+            else:
+                self._shapes[0].color = self._color
 
 
 class GameAction(pyafai.Action):
-    def __init__(self, name):
-        super(GameAction, self).__init__(name)
-        self.direction = (0, 0)
+    direction = (0, 0)
 
     def execute(self, agent):
         x = agent.body.cell_x + self.direction[0]
@@ -133,29 +157,36 @@ class GameAction(pyafai.Action):
                 agent.body.cell_y + self.direction[1])
 
 
-
 class UpAction(GameAction):
+    direction = (0, 1)
+    name = 'up'
+
     def __init__(self):
-        super(UpAction, self).__init__('up')
-        self.direction = (0, 1)
+        super(UpAction, self).__init__(UpAction.name)
 
 
 class DownAction(GameAction):
+    direction = (0, -1)
+    name = 'down'
+
     def __init__(self):
-        super(DownAction, self).__init__('down')
-        self.direction = (0, -1)
+        super(DownAction, self).__init__(DownAction.name)
 
 
 class LeftAction(GameAction):
+    direction = (-1, 0)
+    name = 'left'
+
     def __init__(self):
-        super(LeftAction, self).__init__('left')
-        self.direction = (-1, 0)
+        super(LeftAction, self).__init__(LeftAction.name)
 
 
 class RightAction(GameAction):
+    direction = (1, 0)
+    name = 'right'
+
     def __init__(self):
-        super(RightAction, self).__init__('right')
-        self.direction = (1, 0)
+        super(RightAction, self).__init__(RightAction.name)
 
 
 class PacmanAgent(pyafai.Agent):
@@ -178,22 +209,81 @@ class PacmanAgent(pyafai.Agent):
             obj = self.world.eat_food_at(x, y)
             self.score += obj.value
 
+        l = self.world.get_cell_contents(x, y)
+        if l:
+            for obj in l:
+                if obj.is_body:
+                    ag = obj.agent
+                    if isinstance(ag, GhostAgent) and ag.scared:
+                        self.world.kill_ghost(ag)
+
     def _think(self, delta):
         pass
 
 
 class GhostAgent(pyafai.Agent):
+    GHOST_SCARE_TIMEOUT = 6
+
     def __init__(self, x, y, color=ColorConfig.GHOST1):
         super(GhostAgent, self).__init__()
         self.body = GhostBody(x, y, color)
+
+        self._scared = False
+        self._scared_timer = 0
 
         self.add_action(UpAction())
         self.add_action(DownAction())
         self.add_action(LeftAction())
         self.add_action(RightAction())
 
+    @property
+    def scared(self):
+        return self._scared
+
+    @scared.setter
+    def scared(self, value):
+        self._scared = value
+        self.body.scared = value
+        if value:
+            self._scared_timer = self.GHOST_SCARE_TIMEOUT
+        else:
+            self._scared_timer = 0
+
+    def update(self, delta):
+        super(GhostAgent, self).update(delta)
+
+        if self._scared:
+            self._scared_timer -= delta
+            if self._scared_timer <= 0:
+                self.scared = False
+        else:
+            if self.body.cell == self.world.player.body.cell:
+                self.world.kill_player()
+
     def _think(self, delta):
         pass
+
+
+class RandomGhost(GhostAgent):
+    def __init__(self, x, y, color=ColorConfig.GHOST1):
+        super(RandomGhost, self).__init__(x, y, color)
+
+        self._timeout = 0.2
+        self._timer = self._timeout
+        self._last_action = None
+
+    def _think(self, delta):
+        self._timer -= delta
+        if self._timer <= 0:
+            self._timer = self._timeout
+            valid_actions = self.world.get_valid_actions(self)
+            if valid_actions:
+                if self._last_action in valid_actions and random.random() > 0.5:
+                    return [self._actions[self._last_action]]
+                else:
+                    action = random.choice(valid_actions)
+                    self._last_action = action
+                    return [self._actions[action]]
 
 
 class KeyboardAgent(PacmanAgent):
@@ -281,12 +371,17 @@ class Pellet(Food):
 
 
 class PacmanWorld(pyafai.World2DGrid):
+    GAME_ACTIONS = [UpAction, DownAction, LeftAction, RightAction]
+
     def __init__(self, cell_size, level_filename):
-        self._ghost_start = None
-        self._player_start = None
         self.player = None
-        self._food_count = 0
         self.game_over = False
+        self.player_lives = 1
+        self._ghost_start = []
+        self._player_start = None
+        self._food_count = 0
+        self._valid_actions = None      #speedup for valid actions
+        self._walls = None              #speedup for detection of walls
 
         #load level
         grid = self._load_level(level_filename)
@@ -298,11 +393,14 @@ class PacmanWorld(pyafai.World2DGrid):
                                           tor=True, grid=False)
 
         #create objects from level data
+        self._walls = [[False for x in range(self.width)] for y in range(self.height)]
         for y in range(len(grid)):
+            self._walls.append([])
             for x in range(len(grid[y])):
                 if grid[y][x] == 'X':
                     wall = Wall(x, y, cell_size, self._batch)
                     self.add_object(wall)
+                    self._walls[y][x] = True
 
                 elif grid[y][x] == '.':
                     dot = Dot(x, y, cell_size, self._batch)
@@ -318,7 +416,10 @@ class PacmanWorld(pyafai.World2DGrid):
                     self._player_start = (x, y)
 
                 elif grid[y][x] == 'G':
-                    self._ghost_start = (x, y)
+                    self._ghost_start.append((x, y))
+
+        #generate static valid action map
+        self._generate_valid_actions()
 
 
     def _load_level(self, filename):
@@ -328,6 +429,18 @@ class PacmanWorld(pyafai.World2DGrid):
             grid.reverse()
 
         return grid
+
+    def _generate_valid_actions(self):
+        self._valid_actions = []
+        for y in range(self.height):
+            self._valid_actions.append([])
+            for x in range(self.width):
+                self._valid_actions[y].append([])
+                if not self.has_wall_at(x, y):
+                    for action in PacmanWorld.GAME_ACTIONS:
+                        if not self.has_wall_at(x + action.direction[0],
+                                                y + action.direction[1]):
+                            self._valid_actions[y][x].append(action.name)
 
     @property
     def score(self):
@@ -341,7 +454,7 @@ class PacmanWorld(pyafai.World2DGrid):
         self.add_agent(self.player)
 
     def spawn_ghost(self, ghost_class):
-        ghost = ghost_class(self._ghost_start[0], self._ghost_start[1])
+        ghost = ghost_class(self._ghost_start[0][0], self._ghost_start[0][1])
         self.add_agent(ghost)
 
     def is_valid_action(self, agent, action):
@@ -359,16 +472,45 @@ class PacmanWorld(pyafai.World2DGrid):
             else:
                 return True
 
+    def get_valid_actions(self, agent):
+        return self._valid_actions[agent.body.cell_y][agent.body.cell_x]
+
     def has_food_at(self, x, y):
         return self.has_object_type_at(x, y, Food)
 
+    def has_wall_at(self, x, y):
+        if self._tor:
+            x = int(round(x)) % self._width
+            y = int(round(y)) % self._height
+
+        return self._walls[int(round(y))][int(round(x))]
+
     def eat_food_at(self, x, y):
-        list = self.get_cell_contents(x, y)
-        for obj in list:
+        l = self.get_cell_contents(x, y)
+        for obj in l:
             if isinstance(obj, Food):
                 self.remove_object(obj)
                 self._food_count -= 1
+                if isinstance(obj, Pellet):
+                    self.scare_ghosts()
                 return obj
+
+    def scare_ghosts(self):
+        for g in self._agents:
+            if isinstance(g, GhostAgent):
+                g.scared = True
+
+    def kill_player(self):
+        if self.player is not None:
+            self.player.kill()
+            self.player_lives -= 1
+
+            if self.player_lives > 0:
+                self.spawn_player(type(self.player))
+
+    def kill_ghost(self, ghost):
+        if ghost in self._agents:
+            ghost.kill()
 
     def update(self, delta):
         if not self.game_over:
@@ -377,13 +519,16 @@ class PacmanWorld(pyafai.World2DGrid):
             if self._food_count == 0:
                 self.game_over = True
 
+            if self.player_lives == 0:
+                self.game_over = True
+
 
 class PacmanDisplay(pyafai.Display):
     def __init__(self, *args, **kwargs):
         super(PacmanDisplay, self).__init__(*args, **kwargs)
         self._game_over_label = pyglet.text.Label('Game Over',
                         font_name='Arial',
-                        font_size=60,
+                        font_size=36,
                         x=self.width//2, y=self.height//2,
                         anchor_x='center', anchor_y='center')
 
@@ -397,13 +542,13 @@ class PacmanDisplay(pyafai.Display):
         super(PacmanDisplay, self).on_key_press(symbol, modifiers)
 
         if isinstance(self.world.player, KeyboardAgent):
-            if symbol == key.W or symbol == key.MOTION_UP: #Up
+            if symbol == key.W or symbol == key.MOTION_UP:      #Up
                 self.world.player.next_action = 'up'
 
-            elif symbol == key.S or symbol == key.MOTION_DOWN: #Down
+            elif symbol == key.S or symbol == key.MOTION_DOWN:  #Down
                 self.world.player.next_action = 'down'
 
-            elif symbol == key.A or symbol == key.MOTION_LEFT: #Left
+            elif symbol == key.A or symbol == key.MOTION_LEFT:  #Left
                 self.world.player.next_action = 'left'
 
             elif symbol == key.D or symbol == key.MOTION_RIGHT: #Right
@@ -414,16 +559,18 @@ class PacmanDisplay(pyafai.Display):
 
         if button == mouse.LEFT:
             x1, y1 = self.world.get_cell(x, y)
+            print(x1, y1)
             print(self.world.get_cell_contents(x1, y1))
 
 
 def main():
     world = PacmanWorld(20, 'levels/pacman.txt')
     world.spawn_player(KeyboardAgent)
+    world.spawn_ghost(RandomGhost)
+    world.player_lives = 3
     display = PacmanDisplay(world)
 
     pyafai.run()
-
 
 if __name__ == '__main__':
     main()
