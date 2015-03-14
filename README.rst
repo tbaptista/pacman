@@ -1,4 +1,4 @@
-Pacman game clone using the pyafai framework
+Pac-Man game clone using the pyafai framework
 ============================================
 
 

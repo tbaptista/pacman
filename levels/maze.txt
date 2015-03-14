@@ -4,15 +4,15 @@ X   O..........O   X
 X                  X
 X         G        X
 X                  X
-X                  X
-X    G         G   X
-X                  X
-X                  X
-X                  X
-X                  X
-X                  X
+X     XXX          X
+X    G  X      G   X
+X       X    XXXXXXX
+X       X          X
+XXXXXXXXX          X
 X                  X
 X                  X
+X                  X
+X       XXXXX      X
 X                  X
 X                  X
 X         P        X
