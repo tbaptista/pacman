@@ -108,10 +108,10 @@ class AgentBody(pyafai.Object):
 
 
 class PacmanBody(AgentBody):
-    def __init__(self, x, y):
+    def __init__(self, x, y, cell):
         super(PacmanBody, self).__init__(x, y)
 
-        shape = shapes.Circle(12.5, color=ColorConfig.PACMAN)
+        shape = shapes.Circle(int(cell * 0.6), color=ColorConfig.PACMAN)
         self.add_shape(shape)
 
     @property
@@ -126,7 +126,7 @@ class PacmanBody(AgentBody):
 
 
 class GhostBody(AgentBody):
-    def __init__(self, x, y, color=ColorConfig.GHOST1):
+    def __init__(self, x, y, cell, color=ColorConfig.GHOST1):
         super(GhostBody, self).__init__(x, y)
         self._normal_velocity = AgentBody.VELOCITY * 0.95
         self._scared_velocity = AgentBody.VELOCITY * 0.5
@@ -134,7 +134,7 @@ class GhostBody(AgentBody):
         self._scared = False
         self.velocity = self._normal_velocity
 
-        shape = shapes.Rect(30, 30, color=color)
+        shape = shapes.Rect(cell * 1.25, cell * 1.25, color=color)
         self.add_shape(shape)
 
     @property
@@ -200,11 +200,11 @@ class RightAction(GameAction):
 
 
 class PacmanAgent(pyafai.Agent):
-    def __init__(self, x, y):
+    def __init__(self, x, y, cell):
         super(PacmanAgent, self).__init__()
         self.score = 0
 
-        self.body = PacmanBody(x, y)
+        self.body = PacmanBody(x, y, cell)
 
         self.add_action(UpAction())
         self.add_action(DownAction())
@@ -234,9 +234,9 @@ class PacmanAgent(pyafai.Agent):
 class GhostAgent(pyafai.Agent):
     GHOST_SCARE_TIMEOUT = 6
 
-    def __init__(self, x, y, color=ColorConfig.GHOST1):
+    def __init__(self, x, y, cell, color=ColorConfig.GHOST1):
         super(GhostAgent, self).__init__()
-        self.body = GhostBody(x, y, color)
+        self.body = GhostBody(x, y, cell, color)
 
         self._scared = False
         self._scared_timer = 0
@@ -275,8 +275,8 @@ class GhostAgent(pyafai.Agent):
 
 
 class RandomGhost(GhostAgent):
-    def __init__(self, x, y, color=ColorConfig.GHOST1):
-        super(RandomGhost, self).__init__(x, y, color)
+    def __init__(self, x, y, cell, color=ColorConfig.GHOST1):
+        super(RandomGhost, self).__init__(x, y, cell, color)
 
         self._timeout = 0.2
         self._timer = self._timeout
@@ -297,8 +297,8 @@ class RandomGhost(GhostAgent):
 
 
 class KeyboardAgent(PacmanAgent):
-    def __init__(self, x, y):
-        super(KeyboardAgent, self).__init__(x, y)
+    def __init__(self, x, y, cell):
+        super(KeyboardAgent, self).__init__(x, y, cell)
         self._next_action = None
         self._timeout = 0.3
         self._timer = 0
@@ -362,9 +362,9 @@ class Dot(Food):
         self.value = 10
 
         half = cell_size / 2
-        shape = shapes.Circle(half / 4, x * cell_size + half,
-                              y * cell_size + half,
-                              color=ColorConfig.DOT)
+        shape = shapes.Rect(int(cell_size / 5), int(cell_size / 5), x * cell_size + half,
+                            y * cell_size + half,
+                            color=ColorConfig.DOT)
         shape.add_to_batch(batch)
         self._shapes.append(shape)
 
@@ -389,6 +389,7 @@ class PacmanWorld(pyafai.World2DGrid):
     def __init__(self, cell_size, level_filename):
         self.player = None
         self.game_over = False
+        self.player_win = False
         self.player_lives = 1
         self.graph = graph.Graph()
         self.show_graph = False
@@ -444,8 +445,6 @@ class PacmanWorld(pyafai.World2DGrid):
 
         # generate graph display
         self._graph_display = GraphDisplay(self.graph, self)
-
-        self.paused = False
 
     def _load_level(self, filename):
         grid = []
@@ -514,12 +513,13 @@ class PacmanWorld(pyafai.World2DGrid):
             self._graph_display.draw()
 
     def spawn_player(self, player_class):
-        self.player = player_class(self._player_start[0], self._player_start[1])
+        self.player = player_class(self._player_start[0], self._player_start[1],
+                                   self.cell)
         self.add_agent(self.player)
 
     def spawn_ghost(self, ghost_class):
         location = random.choice(self._ghost_start)
-        ghost = ghost_class(location[0], location[1])
+        ghost = ghost_class(location[0], location[1], self.cell)
         self.add_agent(ghost)
 
     def is_valid_action(self, agent, action):
@@ -586,6 +586,7 @@ class PacmanWorld(pyafai.World2DGrid):
 
             if self._food_count == 0:
                 self.game_over = True
+                self.player_win = True
 
             if self.player_lives == 0:
                 self.game_over = True
@@ -602,11 +603,23 @@ class PacmanDisplay(pyafai.Display):
                                                   anchor_x='center',
                                                   anchor_y='center')
 
+        self._win_label = pyglet.text.Label('Win', font_name='Arial',
+                                            font_size=36,
+                                            x=self.width // 2,
+                                            y=self.height // 2,
+                                            anchor_x='center',
+                                            anchor_y='center')
+
+        self.world.paused = False
+
     def on_draw(self):
         super(PacmanDisplay, self).on_draw()
 
         if self.world.game_over:
-            self._game_over_label.draw()
+            if self.world.player_win:
+                self._win_label.draw()
+            else:
+                self._game_over_label.draw()
 
     def on_key_press(self, symbol, modifiers):
         super(PacmanDisplay, self).on_key_press(symbol, modifiers)
@@ -615,33 +628,34 @@ class PacmanDisplay(pyafai.Display):
             self.world.show_graph = not self.world.show_graph
 
         if isinstance(self.world.player, KeyboardAgent):
-            if symbol == key.W or symbol == key.MOTION_UP:  #Up
+            if symbol == key.W or symbol == key.MOTION_UP:  # Up
                 self.world.player.next_action = 'up'
 
-            elif symbol == key.S or symbol == key.MOTION_DOWN:  #Down
+            elif symbol == key.S or symbol == key.MOTION_DOWN:  # Down
                 self.world.player.next_action = 'down'
 
-            elif symbol == key.A or symbol == key.MOTION_LEFT:  #Left
+            elif symbol == key.A or symbol == key.MOTION_LEFT:  # Left
                 self.world.player.next_action = 'left'
 
-            elif symbol == key.D or symbol == key.MOTION_RIGHT:  #Right
+            elif symbol == key.D or symbol == key.MOTION_RIGHT:  # Right
                 self.world.player.next_action = 'right'
 
 
 class GraphDisplay(object):
     def __init__(self, graph, world):
         self._batch = pyglet.graphics.Batch()
-        self._node_shapes = [[None] * world.grid_width for y in range(world.grid_height)]
+        self._node_shapes = [[None] * world.grid_width for y in
+                             range(world.grid_height)]
         self._conn_shapes = []
 
         cell = world.cell
         half_cell = world.cell / 2
-        color = ('c4B', (150,150,150,100))
+        color = ('c4B', (150, 150, 150, 100))
 
         # create nodes
         for node in graph.get_nodes():
             x, y = node
-            shape = shapes.Circle(4, cell*x+half_cell, cell*y+half_cell,
+            shape = shapes.Circle(4, cell * x + half_cell, cell * y + half_cell,
                                   color=color)
             shape.add_to_batch(self._batch)
             self._node_shapes[y][x] = shape
@@ -651,8 +665,10 @@ class GraphDisplay(object):
             x1, y1 = node
             for dest in graph.get_connections(node):
                 x2, y2 = dest[0]
-                shape = shapes.Line(cell*x1+half_cell, cell*y1+half_cell,
-                                    cell*x2+half_cell, cell*y2+half_cell,
+                shape = shapes.Line(cell * x1 + half_cell,
+                                    cell * y1 + half_cell,
+                                    cell * x2 + half_cell,
+                                    cell * y2 + half_cell,
                                     color=color)
                 shape.add_to_batch(self._batch)
                 self._conn_shapes.append(shape)
@@ -662,7 +678,7 @@ class GraphDisplay(object):
 
 
 def main():
-    world = PacmanWorld(20, 'levels/box.txt')
+    world = PacmanWorld(20, 'levels/pacman.txt')
     world.spawn_player(KeyboardAgent)
     world.spawn_ghost(RandomGhost)
     world.player_lives = 3
