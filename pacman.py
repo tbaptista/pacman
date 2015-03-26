@@ -9,7 +9,7 @@ from io import open
 
 __docformat__ = 'restructuredtext'
 __author__ = 'Tiago Baptista'
-__version__ = '1.0b2'
+__version__ = '1.0b3'
 
 import pyafai
 from pyafai import shapes
@@ -50,42 +50,77 @@ class AgentBody(pyafai.Object):
 
         self.velocity = AgentBody.VELOCITY
         self._direction = (0, 0)
+        self._target = None
         self._velx = 0
         self._vely = 0
+        self._excess = [0, 0]
+
+    @property
+    def target(self):
+        return self._target
 
     def update(self, delta):
-        if self.direction != (0, 0):
+        if self._target is not None:
+            if self._excess[0] != 0:
+                self.x += self._excess[0]
+                self._excess[0] = 0
+            elif self._excess[1] != 0:
+                self.y += self._excess[1]
+                self._excess[1] = 0
+
             self.x += self._velx * delta
             self.y += self._vely * delta
 
-            if self._direction[0] == 1 and abs(self.x - self.cell_x) < 0.1:
-                if self.agent.world.has_object_type_at(self.cell_x + 1,
-                                                       self.cell_y, Wall):
-                    self.direction = (0, 0)
-            elif self._direction[0] == -1 and abs(self.x - self.cell_x) < 0.1:
-                if self.agent.world.has_object_type_at(self.cell_x - 1,
-                                                       self.cell_y, Wall):
-                    self.direction = (0, 0)
-            elif self._direction[1] == 1 and abs(self.y - self.cell_y) < 0.1:
-                if self.agent.world.has_object_type_at(self.cell_x,
-                                                       self.cell_y + 1, Wall):
-                    self.direction = (0, 0)
-            elif self._direction[1] == -1 and abs(self.y - self.cell_y) < 0.1:
-                if self.agent.world.has_object_type_at(self.cell_x,
-                                                       self.cell_y - 1, Wall):
-                    self.direction = (0, 0)
+            w = self.agent.world.grid_width
+            h = self.agent.world.grid_height
+
+            if self._direction[0] > 0:
+                if self.x > w - 0.5:
+                    self._target = (self._target[0] % w, self._target[1])
+
+                elif self._target[0] - self.x <= 0:
+                    self._excess[0] = self.x - self._target[0]
+                    self.x = self._target[0]
+                    self._target = None
+
+            elif self._direction[0] < 0:
+                if self.x < -0.5:
+                    self._target = (self._target[0] % w, self._target[1])
+
+                elif self.x - self._target[0] <= 0:
+                    self._excess[0] = self.x - self._target[0]
+                    self.x = self._target[0]
+                    self._target = None
+
+            elif self._direction[1] > 0:
+                if self.y > h - 0.5:
+                    self._target = (self._target[0], self._target[1] % h)
+
+                elif self._target[1] - self.y <= 0:
+                    self._excess[1] = self.y - self._target[1]
+                    self.y = self._target[1]
+                    self._target = None
+
+            elif self._direction[1] < 0:
+                if self.y < -0.5:
+                    self._target = (self._target[0], self._target[1] % h)
+
+                elif self.y - self._target[1] <= 0:
+                    self._excess[1] = self.y - self._target[1]
+                    self.y = self._target[1]
+                    self._target = None
 
     @property
     def cell(self):
-        return int(round(self.x)), int(round(self.y))
+        return round(self.x), round(self.y)
 
     @property
     def cell_x(self):
-        return int(round(self.x))
+        return round(self.x)
 
     @property
     def cell_y(self):
-        return int(round(self.y))
+        return round(self.y)
 
     @property
     def direction(self):
@@ -93,18 +128,19 @@ class AgentBody(pyafai.Object):
 
     @direction.setter
     def direction(self, direction):
-        if abs(self._direction[0]) == 1 and abs(direction[0]) != 1:
-            self.x = self.cell_x
-        elif abs(self._direction[1]) == 1 and abs(direction[1]) != 1:
-            self.y = self.cell_y
+        if self._target is None:
+            if self._direction != direction:
+                self._excess = [0, 0]
 
-        self._direction = direction
-        if direction != (0, 0):
-            self._velx = direction[0] * self.velocity
-            self._vely = direction[1] * self.velocity
-        else:
-            self._velx = 0
-            self._vely = 0
+            self._direction = direction
+            self._target = (self.cell_x + direction[0],
+                            self.cell_y + direction[1])
+            if direction != (0, 0):
+                self._velx = direction[0] * self.velocity
+                self._vely = direction[1] * self.velocity
+            else:
+                self._velx = 0
+                self._vely = 0
 
 
 class PacmanBody(AgentBody):
@@ -154,11 +190,15 @@ class GhostBody(AgentBody):
 
 
 class GameAction(pyafai.Action):
+    DIR_TO_ACTION = {(0, 1): 'up', (0, -1): 'down',
+                     (-1, 0): 'left', (1, 0): 'right',
+                     (0, 0): 'stop'}
     direction = (0, 0)
 
+    REVERSE = {'up': 'down', 'down': 'up', 'left': 'right', 'right': 'left',
+               'stop': 'stop'}
+
     def execute(self, agent):
-        x = agent.body.cell_x + self.direction[0]
-        y = agent.body.cell_y + self.direction[1]
         if agent.world.is_valid_action(agent, self):
             agent.body.direction = self.direction
 
@@ -278,28 +318,21 @@ class RandomGhost(GhostAgent):
     def __init__(self, x, y, cell, color=ColorConfig.GHOST1):
         super(RandomGhost, self).__init__(x, y, cell, color)
 
-        self._timeout = 0.2
-        self._timer = self._timeout
         self._last_action = None
 
     def _think(self, delta):
-        self._timer -= delta
-        if self._timer <= 0:
-            self._timer = self._timeout
-            valid_actions = self.world.get_valid_actions(self)
-            if valid_actions:
-                if self._last_action in valid_actions and random.random() > 0.5:
-                    return [self._actions[self._last_action]]
-                else:
-                    action = random.choice(valid_actions)
-                    self._last_action = action
-                    return [self._actions[action]]
+        valid_actions = self.world.get_valid_actions(self)
+        if valid_actions:
+            action = random.choice(valid_actions)
+            self._last_action = action
+            return [self._actions[action]]
 
 
 class KeyboardAgent(PacmanAgent):
     def __init__(self, x, y, cell):
         super(KeyboardAgent, self).__init__(x, y, cell)
         self._next_action = None
+        self._action = None
         self._timeout = 0.3
         self._timer = 0
 
@@ -316,16 +349,26 @@ class KeyboardAgent(PacmanAgent):
             self._next_action = None
 
     def _think(self, delta):
-        self._timer -= delta
-        if self._timer < 0:
-            self.next_action = None
-            self._timer = 0
-
-        if self.next_action is not None:
-            if self.world.is_valid_action(self, self.next_action):
-                res = [self.next_action]
+        if self._timer > 0:
+            self._timer -= delta
+            if self._timer < 0:
                 self.next_action = None
-                return res
+                self._timer = 0
+
+        # Only execute new action when the previous is finished
+        if self.body.target is None:
+            if self.next_action is not None:
+                if self.world.is_valid_action(self, self.next_action):
+                    res = [self.next_action]
+                    self._action = self.next_action
+                    self.next_action = None
+                    return res
+
+            if self._action is not None:
+                if self.world.is_valid_action(self, self._action):
+                    return [self._action]
+                else:
+                    self._action = None
 
         return []
 
@@ -385,6 +428,7 @@ class Pellet(Food):
 
 class PacmanWorld(pyafai.World2DGrid):
     GAME_ACTIONS = [UpAction, DownAction, LeftAction, RightAction]
+    NAME_TO_ACTION = dict([(a.name, a) for a in GAME_ACTIONS])
 
     def __init__(self, cell_size, level_filename):
         self.player = None
@@ -409,6 +453,8 @@ class PacmanWorld(pyafai.World2DGrid):
         super(PacmanWorld, self).__init__(width, height, cell_size,
                                           tor=True, grid=False,
                                           nhood=pyafai.World2DGrid.von_neumann)
+
+        self.paused = False
 
         # create objects from level data
         self._walls = [[False for x in range(self.width)] for y in
@@ -476,17 +522,22 @@ class PacmanWorld(pyafai.World2DGrid):
                 # if it is not a wall, calculate connections and weights
                 if not is_wall:
                     connections = []
-                    for x1, y1 in self.get_neighbourhood(x, y):
-                        if not self.has_wall_at(x1, y1):
-                            weight = 1
-                            connections.append(((x1, y1), weight))
+                    for action_name in self._valid_actions[y][x]:
+                        action = PacmanWorld.NAME_TO_ACTION[action_name]
+                        x1 = x + action.direction[0]
+                        y1 = y + action.direction[1]
+                        if self._tor:
+                            x1 = x1 % self._width
+                            y1 = y1 % self._height
+                        weight = 1
+                        connections.append(((x1, y1), weight, action_name))
 
                     self.graph.add_node((x, y), connections)
 
     def get_neighbourhood(self, x, y):
         result = []
-        x = int(x + 0.5)
-        y = int(y + 0.5)
+        x = round(x)
+        y = round(y)
         for dx, dy in self._nhood:
             x1 = x + dx
             y1 = y + dy
@@ -517,40 +568,44 @@ class PacmanWorld(pyafai.World2DGrid):
                                    self.cell)
         self.add_agent(self.player)
 
-    def spawn_ghost(self, ghost_class):
+    def spawn_ghost(self, ghost_class, *args, **kwargs):
         location = random.choice(self._ghost_start)
-        ghost = ghost_class(location[0], location[1], self.cell)
+        ghost = ghost_class(location[0], location[1], self.cell,
+                            *args, **kwargs)
         self.add_agent(ghost)
 
     def is_valid_action(self, agent, action):
-        new_x = agent.body.cell_x + action.direction[0]
-        new_y = agent.body.cell_y + action.direction[1]
-        if self.has_object_type_at(new_x, new_y, Wall):
-            return False
+        if action.name in self.get_valid_actions(agent):
+            return True
         else:
-            if abs(agent.body.direction[0]) == 1 and abs(
-                    action.direction[0]) != 1 and \
-                            abs(agent.body.cell_x - agent.body.x) > 0.1:
-                return False
-            elif abs(agent.body.direction[1]) == 1 and abs(
-                    action.direction[1]) != 1 and \
-                            abs(agent.body.cell_y - agent.body.y) > 0.1:
-                return False
-            else:
-                return True
+            return False
 
     def get_valid_actions(self, agent):
-        return self._valid_actions[agent.body.cell_y][agent.body.cell_x]
+        # Only allow actions when the body is not executing a previous one
+        if agent.body.target is not None:
+            return []
+
+        valid = self._valid_actions[agent.body.cell_y][agent.body.cell_x]
+        if isinstance(agent, GhostAgent):
+            direction = agent.body.direction
+            if direction != (0, 0) and len(valid) > 1:
+                reverse = (direction[0] * -1, direction[1] * -1)
+                action = GameAction.DIR_TO_ACTION[reverse]
+                if action in valid:
+                    valid = valid[:]
+                    valid.remove(action)
+
+        return valid
 
     def has_food_at(self, x, y):
         return self.has_object_type_at(x, y, Food)
 
     def has_wall_at(self, x, y):
         if self._tor:
-            x = int(round(x)) % self._width
-            y = int(round(y)) % self._height
+            x = round(x) % self._width
+            y = round(y) % self._height
 
-        return self._walls[int(round(y))][int(round(x))]
+        return self._walls[round(y)][round(x)]
 
     def eat_food_at(self, x, y):
         l = self.get_cell_contents(x, y)
@@ -609,8 +664,6 @@ class PacmanDisplay(pyafai.Display):
                                             y=self.height // 2,
                                             anchor_x='center',
                                             anchor_y='center')
-
-        self.world.paused = False
 
     def on_draw(self):
         super(PacmanDisplay, self).on_draw()

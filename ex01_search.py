@@ -13,7 +13,7 @@ from __future__ import division
 
 __docformat__ = 'restructuredtext'
 __author__ = 'Tiago Baptista'
-__version__ = '1.0b1'
+__version__ = '1.0'
 
 import pacman
 import pyafai
@@ -21,8 +21,8 @@ from pyglet.window import mouse
 
 
 class SearchAgent(pacman.PacmanAgent):
-    def __init__(self, x, y):
-        super(SearchAgent, self).__init__(x, y)
+    def __init__(self, x, y, cell):
+        super(SearchAgent, self).__init__(x, y, cell)
 
         self._target = None
         self._path = []
@@ -35,14 +35,21 @@ class SearchAgent(pacman.PacmanAgent):
     def target(self, value):
         self._target = value
 
-        # invalidate existing path, if any
+        # We are changing destination, so invalidate current path
         if value is not None and self._path:
             self._path = []
 
     def _think(self, delta):
+        # If a target has been set
+        if self._target is not None:
+            self._path = []     # TODO: execute the search algorithm
+            self._target = None
 
-        pass
-
+        # If we have a non empty path
+        if self._path:
+            # Execute the next action on the path
+            next_action = self._path.pop(0)
+            return [self._actions[next_action]]
 
 
 class SearchDisplay(pacman.PacmanDisplay):
@@ -62,7 +69,7 @@ class SearchDisplay(pacman.PacmanDisplay):
 
 
 def setup():
-    world = pacman.PacmanWorld(20, 'levels/maze.txt')
+    world = pacman.PacmanWorld(20, 'levels/pacman.txt')
     display = SearchDisplay(world)
 
     # create pacman agent
