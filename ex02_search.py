@@ -6,7 +6,7 @@
 
 """
 Path-finding exercise using the pac-man game. Ghosts follow the player.
-Sample solution.
+
 """
 
 from __future__ import division
@@ -15,20 +15,15 @@ __docformat__ = 'restructuredtext'
 __author__ = 'Tiago Baptista'
 __version__ = '1.0'
 
-# Allow the import of the pacman base modules
-import sys
-sys.path.insert(1,'../pacman/')
-
 import pacman
 import pyafai
 import graph
 
 
 class GhostGraph(graph.Graph):
-    def __init__(self, graph):
-        self._graph = graph._graph
-        self._expanded_counter = 0
-        self._visited_counter = 0
+    def __init__(self, base_graph: graph.Graph):
+        super(GhostGraph, self).__init__()
+        self._graph = base_graph._graph
 
     def get_connections(self, node):
         coord = node[:2]
@@ -64,6 +59,7 @@ class SearchGhost(pacman.GhostAgent):
         # If the previous action has finished
         if self.body.target is None:
             # Set new target and generate path
+            # TODO
 
             # If we have a non empty path
             if self._path:
@@ -74,7 +70,7 @@ class SearchGhost(pacman.GhostAgent):
 
 
 def setup():
-    world = pacman.PacmanWorld(20, '../pacman/levels/pacman.txt')
+    world = pacman.PacmanWorld(20, 'levels/pacman.txt')
     display = pacman.PacmanDisplay(world)
     world.graph = GhostGraph(world.graph)
 

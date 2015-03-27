@@ -299,6 +299,10 @@ class GhostAgent(pyafai.Agent):
         else:
             self._scared_timer = 0
 
+    @property
+    def last_action(self):
+        return GameAction.DIR_TO_ACTION[self.body.direction]
+
     def update(self, delta):
         super(GhostAgent, self).update(delta)
 
