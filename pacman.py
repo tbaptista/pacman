@@ -335,37 +335,32 @@ class RandomGhost(GhostAgent):
 class KeyboardAgent(PacmanAgent):
     def __init__(self, x, y, cell):
         super(KeyboardAgent, self).__init__(x, y, cell)
-        self._next_action = None
+
+        self.keys = None
         self._action = None
-        self._timeout = 0.3
-        self._timer = 0
 
     @property
     def next_action(self):
-        return self._next_action
+        if self.keys[key.MOTION_UP] or self.keys[key.W]:
+            return 'up'
+        elif self.keys[key.MOTION_LEFT] or self.keys[key.A]:
+            return 'left'
+        elif self.keys[key.MOTION_DOWN] or self.keys[key.S]:
+            return 'down'
+        elif self.keys[key.MOTION_RIGHT] or self.keys[key.D]:
+            return 'right'
 
-    @next_action.setter
-    def next_action(self, action_name):
-        if action_name is not None:
-            self._next_action = self._actions[action_name]
-            self._timer = self._timeout
-        else:
-            self._next_action = None
+        return None
 
     def _think(self, delta):
-        if self._timer > 0:
-            self._timer -= delta
-            if self._timer < 0:
-                self.next_action = None
-                self._timer = 0
-
         # Only execute new action when the previous is finished
         if self.body.target is None:
-            if self.next_action is not None:
-                if self.world.is_valid_action(self, self.next_action):
-                    res = [self.next_action]
-                    self._action = self.next_action
-                    self.next_action = None
+            next_action = self.next_action
+            if next_action is not None:
+                next_action = self._actions[next_action]
+                if self.world.is_valid_action(self, next_action):
+                    res = [next_action]
+                    self._action = next_action
                     return res
 
             if self._action is not None:
@@ -441,6 +436,7 @@ class PacmanWorld(pyafai.World2DGrid):
         self.player_lives = 1
         self.graph = graph.Graph()
         self.show_graph = False
+        self.keys = None    # key state dictionary
         self._ghost_start = []
         self._player_start = None
         self._food_count = 0
@@ -568,9 +564,17 @@ class PacmanWorld(pyafai.World2DGrid):
             self._graph_display.draw()
 
     def spawn_player(self, player_class):
-        self.player = player_class(self._player_start[0], self._player_start[1],
-                                   self.cell)
-        self.add_agent(self.player)
+        if self.player is None:
+            self.player = player_class(self._player_start[0],
+                                       self._player_start[1], self.cell)
+            if isinstance(self.player, KeyboardAgent):
+                if self.keys is not None:
+                    self.player.keys = self.keys
+                else:
+                    print("No key state dictionary has been set!")
+            self.add_agent(self.player)
+        else:
+            print("Only one player is allowed!")
 
     def spawn_ghost(self, ghost_class, *args, **kwargs):
         location = random.choice(self._ghost_start)
@@ -669,6 +673,11 @@ class PacmanDisplay(pyafai.Display):
                                             anchor_x='center',
                                             anchor_y='center')
 
+        keys = key.KeyStateHandler()
+        self.push_handlers(keys)
+        self.world.keys = keys
+
+
     def on_draw(self):
         super(PacmanDisplay, self).on_draw()
 
@@ -683,19 +692,6 @@ class PacmanDisplay(pyafai.Display):
 
         if symbol == key.G:
             self.world.show_graph = not self.world.show_graph
-
-        if isinstance(self.world.player, KeyboardAgent):
-            if symbol == key.W or symbol == key.MOTION_UP:  # Up
-                self.world.player.next_action = 'up'
-
-            elif symbol == key.S or symbol == key.MOTION_DOWN:  # Down
-                self.world.player.next_action = 'down'
-
-            elif symbol == key.A or symbol == key.MOTION_LEFT:  # Left
-                self.world.player.next_action = 'left'
-
-            elif symbol == key.D or symbol == key.MOTION_RIGHT:  # Right
-                self.world.player.next_action = 'right'
 
 
 class GraphDisplay(object):
@@ -736,10 +732,10 @@ class GraphDisplay(object):
 
 def main():
     world = PacmanWorld(20, 'levels/pacman.txt')
+    display = PacmanDisplay(world)
     world.spawn_player(KeyboardAgent)
     world.spawn_ghost(RandomGhost)
     world.player_lives = 3
-    display = PacmanDisplay(world)
 
     pyafai.run()
 
