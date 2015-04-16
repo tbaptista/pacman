@@ -563,10 +563,11 @@ class PacmanWorld(pyafai.World2DGrid):
         if self.show_graph:
             self._graph_display.draw()
 
-    def spawn_player(self, player_class):
+    def spawn_player(self, player_class, *args, **kwargs):
         if self.player is None:
             self.player = player_class(self._player_start[0],
-                                       self._player_start[1], self.cell)
+                                       self._player_start[1], self.cell,
+                                       *args, **kwargs)
             if isinstance(self.player, KeyboardAgent):
                 if self.keys is not None:
                     self.player.keys = self.keys

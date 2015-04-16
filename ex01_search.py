@@ -1,11 +1,13 @@
 # coding: utf-8
-#-----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 # Copyright (c) 2015 Tiago Baptista
 # All rights reserved.
-#-----------------------------------------------------------------------------
+# -----------------------------------------------------------------------------
 
 """
-Path-finding exercise using the pac-man game.
+Path-finding exercise using the pac-man game. Using the mouse, choose a target
+location for the pac-man agent. Given this target the agent should compute the
+path to that location.
 
 """
 
