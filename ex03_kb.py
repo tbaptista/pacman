@@ -22,17 +22,15 @@ import pyafai
 
 class Literal(object):
     def __init__(self, lit_string =""):
-        self._lit_string = lit_string
+        self._lit_string = lit_string.strip()
+        self.neg = self._lit_string.startswith('not ')
+        self.atom = lit_string.lstrip('not ')
 
     def is_neg(self):
-        return (self._lit_string[:4] == "not ")
+        return self.neg
 
     def get_atom(self):
-        if self._lit_string[:4] == "not ":
-            atom = self._lit_string[4:]
-        else:
-            atom = self._lit_string
-        return atom
+        return self.atom
 
     def __str__(self):
         return self._lit_string
@@ -172,18 +170,25 @@ class WallPerception(pyafai.Perception):
 
 
 class GhostPerception(pyafai.Perception):
+    NHOOD = {(0, 1): [(0, 1), (-1, 1), (1, 1), (0, 2)],
+             (0, -1): [(0, -1), (-1, -1), (1, -1), (0, -2)],
+             (1, 0): [(1, 0), (1, 1), (1, -1), (2, 0)],
+             (-1, 0): [(-1, 0), (-1, 1), (-1, -1), (-2, 0)],
+             (0, 0): []}
+
     def __init__(self):
         super(GhostPerception, self).__init__(str, 'ghost')
 
     def update(self, agent):
         x = agent.body.cell_x
         y = agent.body.cell_y
-        dir = agent.body.direction
-        if agent.world.has_object_type_at(x + dir[0], y + dir[1],
-                                          pacman.GhostBody):
-            self.value = self.name
-        else:
-            self.value = ''
+        nhood = GhostPerception.NHOOD[dir]
+        self.value = ''
+        for d in nhood:
+            if agent.world.has_object_type_at(x + d[0], y + d[1],
+                                              pacman.GhostBody):
+                self.value = self.name
+                break
 
 
 def test_kb():
