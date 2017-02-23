@@ -38,6 +38,7 @@ class NNLayer():
         return 1 / (1 + math.e ** -x)
 
     def feed_forward(self, inputs):
+        inputs = inputs[:]
         inputs.append(1)
         outputs = []
         for neuron in range(len(self._weights)):
@@ -56,11 +57,17 @@ class NNFeedForward():
         self._hidden = NNLayer(n_hidden, n_in)
         self._out = NNLayer(n_out, n_hidden)
 
+        self._hidden_outputs = []
+
     def feed_forward(self, inputs):
-        outputs = self._hidden.feed_forward(inputs)
-        outputs = self._out.feed_forward(outputs)
+        self._hidden_outputs = self._hidden.feed_forward(inputs)
+        outputs = self._out.feed_forward(self._hidden_outputs)
 
         return outputs
+
+    def train(self, data, rate):
+        # TODO
+        pass
 
 class NNPacman(pacman.PacmanAgent):
     def __init__(self, x, y, cell):
@@ -85,14 +92,24 @@ class NNPacman(pacman.PacmanAgent):
 
         # Create Neural Network controller.
         # Connect perceptions to input layer, and actions to output layer.
-        self._nn = NNFeedForward(4, 4, 2)
+        self._nn = NNFeedForward(14, 14, 2)
         self._inputs =[self._perceptions['wall_up'],
                        self._perceptions['wall_down'],
                        self._perceptions['wall_left'],
-                       self._perceptions['wall_right']]
+                       self._perceptions['wall_right'],
+                       self._perceptions['going_up'],
+                       self._perceptions['going_down'],
+                       self._perceptions['going_left'],
+                       self._perceptions['going_right'],
+                       self._perceptions['food_up'],
+                       self._perceptions['food_down'],
+                       self._perceptions['food_left'],
+                       self._perceptions['food_right'],
+                       self._perceptions['ghost'],
+                       self._perceptions['random']]
         self._action_dict = {(0, 0): 'up', (0, 1): 'down',
                              (1, 0): 'left', (1, 1):'right'}
-
+        self._rev_action_dict = dict([(v, k) for k, v in self._action_dict.items()])
 
     def _think(self, delta):
         # If the previous action has finished
@@ -101,8 +118,28 @@ class NNPacman(pacman.PacmanAgent):
             inputs = [p.value for p in self._inputs]
             x, y = [round(o) for o in self._nn.feed_forward(inputs)]
             action = self._action_dict[(x, y)]
-            print(action)
             return [self._actions[action]]
+
+    def train(self, filename, rate=0.2, epochs=100):
+        data = []
+
+        # Read and parse data file
+        with open(filename, 'r') as f:
+            header = f.readline().strip().split(',')
+            for line in f:
+                line = line.strip().split(',')
+                line[:-1] = [int(x) for x in line[:-1]]
+                data.append([])
+
+                for p in self._inputs:
+                    data[-1].append(line[header.index(p.name)])
+
+                data[-1].extend(self._rev_action_dict[line[-1]])
+
+        # Train network
+        for i in range(epochs):
+            self._nn.train(data, rate)
+
 
 
 class DirectionPerception(pyafai.Perception):
@@ -178,14 +215,52 @@ class RandomPerception(pyafai.Perception):
 
 def setup():
     world = pacman.PacmanWorld(20, 'levels/medium.txt')
-    pacman.PacmanDisplay(world)
 
     # Create pac-man agent
     world.spawn_player(NNPacman)
     world.player_lives = 1
 
+    # Train network
+    world.player.train('pacman.sav', 0.2, 100)
+
     # Create ghosts
     world.spawn_ghost(pacman.RandomGhost)
+
+    # Create display
+    pacman.PacmanDisplay(world)
+
+def record_pacman_keyboard():
+    world = pacman.PacmanWorld(20, 'levels/medium.txt')
+    pacman.PacmanDisplay(world)
+
+    # Create pac-man agent
+    world.spawn_player(pacman.KeyboardAgent)
+
+    # Add perceptions
+    world.player.add_perception(DirectionPerception((0, 1)))
+    world.player.add_perception(DirectionPerception((0, -1)))
+    world.player.add_perception(DirectionPerception((1, 0)))
+    world.player.add_perception(DirectionPerception((-1, 0)))
+    world.player.add_perception(WallPerception((0, 1)))
+    world.player.add_perception(WallPerception((0, -1)))
+    world.player.add_perception(WallPerception((1, 0)))
+    world.player.add_perception(WallPerception((-1, 0)))
+    world.player.add_perception(FoodPerception((0, 1)))
+    world.player.add_perception(FoodPerception((0, -1)))
+    world.player.add_perception(FoodPerception((1, 0)))
+    world.player.add_perception(FoodPerception((-1, 0)))
+    world.player.add_perception(GhostPerception())
+    world.player.add_perception(RandomPerception())
+    world.player_lives = 1
+    world.player.start_recording()
+
+    # Create ghosts
+    world.spawn_ghost(pacman.RandomGhost)
+
+    pyafai.run()
+
+    world.player.stop_recording()
+    world.player.save_recording('pacman.sav')
 
 
 if __name__ == '__main__':
@@ -195,3 +270,5 @@ if __name__ == '__main__':
     # Test Feed Forward using XOR
     #nn = NNFeedForward(2, 2, 1)
     #print(nn.feed_forward([0, 0]))
+
+    #record_pacman_keyboard()

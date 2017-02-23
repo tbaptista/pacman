@@ -6,17 +6,16 @@
 
 from __future__ import division
 from io import open
-
-__docformat__ = 'restructuredtext'
-__author__ = 'Tiago Baptista'
-__version__ = '1.0b4'
-
 import pyafai
 from pyafai import shapes
 import pyglet
 from pyglet.window import key
 import graph
 import random
+
+__docformat__ = 'restructuredtext'
+__author__ = 'Tiago Baptista'
+__version__ = '1.0b4'
 
 
 class ColorConfig(object):
@@ -250,6 +249,9 @@ class PacmanAgent(pyafai.Agent):
     def __init__(self, x, y, cell):
         super(PacmanAgent, self).__init__()
         self.score = 0
+        self._history = []
+        self._header = []
+        self._recording = False
 
         self.body = PacmanBody(x, y, cell)
 
@@ -257,6 +259,10 @@ class PacmanAgent(pyafai.Agent):
         self.add_action(DownAction())
         self.add_action(LeftAction())
         self.add_action(RightAction())
+
+    @property
+    def last_action(self):
+        return GameAction.DIR_TO_ACTION[self.body.direction]
 
     def eat_food(self):
         x, y = self.body.cell
@@ -277,10 +283,32 @@ class PacmanAgent(pyafai.Agent):
     def update(self, delta):
         self.eat_ghosts()
 
+        if self.body.target is None:
+            flag = True
+        else:
+            flag = False
+
         super(PacmanAgent, self).update(delta)
+
+        if self._recording and flag:
+            self._history.append([])
+            self._history[-1].extend([p.value for p in self._perceptions.values()])
+            self._history[-1].append(self.last_action)
 
         self.eat_food()
         self.eat_ghosts()
+
+    def start_recording(self):
+        self._header = [p.name for p in self._perceptions.values()] + ['action']
+        self._recording = True
+
+    def stop_recording(self):
+        self._recording = False
+
+    def save_recording(self, filename):
+        with open(filename, 'w') as f:
+            f.write(','.join(self._header) + '\n')
+            f.writelines([','.join([str(v) for v in line]) + '\n' for line in self._history])
 
     def _think(self, delta):
         pass
@@ -332,7 +360,6 @@ class GhostAgent(pyafai.Agent):
                 self.scared = False
         else:
             self.eat_player()
-
 
     def _think(self, delta):
         pass
