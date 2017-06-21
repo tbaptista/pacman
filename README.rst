@@ -3,14 +3,14 @@ Pac-Man game clone using the pyafai framework
 
 
 
-| Copyright (c) 2015 Tiago Baptista - baptista@dei.uc.pt
+| Copyright (c) 2015 Tiago Baptista
 | All rights reserved
 
 Dependencies
 ------------
-- Python 3 (http://www.python.org) (should also work on Python 2.7)
-- pyglet (http://www.pyglet.org) (tested on version 1.2)
-- pyafai (tested on version 1.0rc1)
+- Python 3 (http://www.python.org)
+- pyglet (http://www.pyglet.org)
+- pyafai (https://github.com/tbaptista/pyafai)
 
 Authors
 -------
