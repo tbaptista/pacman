@@ -2,9 +2,19 @@ Pac-Man game clone using the pyafai framework
 =============================================
 
 
+This pac-man clone was created with the purpose of serving as a learning tool
+for the Introduction to Artificial Intelligence course from the Department
+of Informatics Engineering of the University of Coimbra. It is built on top
+of the pyafai framework, a multi-agent framework also built with an educational
+purpose.
+
+The main game logic is implemented in pacman.py, and all the ex* files are
+example exercises. In these exercises, code is missing that is supposed to be
+implemented by students, usually marked by a comment (TODO).
 
 | Copyright (c) 2015 Tiago Baptista
-| All rights reserved
+| Licensed under the Apache License, Version 2.0 (see LICENSE.txt)
+
 
 Dependencies
 ------------
