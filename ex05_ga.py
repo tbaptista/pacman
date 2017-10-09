@@ -7,6 +7,10 @@
 """
 Evolving Neural Networks with a Genetic Algorithm
 
+Note: This exercise is still not complete. The connection to pacman is not 
+implemented. It can still serve as a starting point for an exercise that needs
+more time to complete.
+
 """
 
 from __future__ import division
